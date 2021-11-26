@@ -10,13 +10,15 @@ def test_ham():
     assert 'brier_2' in uu.worlds[1].bigdf.columns
     assert len(uu.worlds) == wo
     assert len(uu.worlds[3].bigdf['brier_2']) == ga
-    pdb.set_trace()
+    #pdb.set_trace()
     uu.plot_rank_freq()
     #pdb.set_trace()
 
 def test_world():
     mycrowd = [forecaster('pmm'), forecaster('pmp'), forecaster('truth')]
-    W = world(numgames=10, p_t=0.95, crowd=mycrowd)
-    #derf = W.play(mycrowd)
-    assert len(W.truths_ranks['ign']) == 10
-    assert len(W.truths_ranks['brier']) == 10
+    # bug where length of games not same as length of ranks...
+    for x in range(10,510,20):
+        W = world(numgames=x, p_t=0.95, crowd=mycrowd)
+        #derf = W.play(mycrowd)
+        assert len(W.truths_ranks['ign']) == x
+        assert len(W.truths_ranks['brier']) == x

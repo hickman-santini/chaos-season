@@ -24,7 +24,7 @@ class forecaster:
         elif archetype == "pmp":
             self.offset = 0.01
         elif archetype == "pmm":
-            self.offset = -.1
+            self.offset = -0.01
         elif archetype == "truth": # P_T
             self.offset = 0
         self.allin = random.uniform(0,1)
@@ -70,8 +70,9 @@ class universe:
     def plot_rank_freq(self):
         q = pd.DataFrame([w.truths_ranks['ign'] for w in self.worlds])
         freqs = q.apply(lambda x: x.value_counts(normalize=True)).T
+        freqs.columns = [name * 1.0 for name in freqs.columns]
         freqs = freqs.replace(nan, 0)[freqs.columns.intersection([1.0,2.0,3.0])]
-        freqs.plot()
+        freqs.plot(style={1.0:'b', 2.0:'r', 3.0:'g'})
 
 
 class world:
@@ -107,6 +108,7 @@ class world:
             for (y, score) in zip(range(len(scores)), scores):
                 if score == caster.igns_cumsum[index]:
                     self.truths_ranks['ign'].append(y+1)
+                    continue
 
 
     def get_truths_ranks_brier(self, df, caster):
@@ -118,3 +120,4 @@ class world:
             for (y, score) in zip(range(len(scores)), scores):
                 if score == caster.briers_cumsum[index]:
                     self.truths_ranks['brier'].append(y+1)
+                    continue
