@@ -1,6 +1,7 @@
 """
 
 """
+from typing import DefaultDict
 from numpy import random, log2, nan
 import pandas as pd
 import pdb
@@ -45,7 +46,6 @@ class forecaster:
 
     def ign(self, p):
         # p is prob assigned to the correct outcome
-        #pdb.set_trace()
         return 25 * 1 + log2(p)
 
     def brier(self, p):
@@ -54,17 +54,20 @@ class forecaster:
         
 
 class universe:
-    def __init__(self, p_t, **kwargs):
-        self.p_t = p_t # temporary - constant p_t
-        self.crowd = [] 
-        for archetype, num in kwargs.items():
+    def __init__(self, crowd, p_t=None, d_t=None, v_t=None, **kwargs):
+        self.p_t = p_t
+        self.d_t = d_t
+        self.v_t = v_t
+        self.crowd = []
+        self.kwargs = kwargs
+        for archetype, num in crowd.items():
             for i in range(num):
                 self.crowd.append(forecaster(archetype))
         self.worlds = []
 
     def play(self, numworlds=NUM_WORLDS, numgames=NUM_GAMES):
         for w in range(numworlds):
-            W = world(numgames, self.p_t, self.crowd)
+            W = world(numgames, self.crowd, p_t=self.p_t, d_t=self.d_t, v_t=self.v_t, **self.kwargs)
             self.worlds.append(W)
 
     def plot_rank_freq(self):
@@ -76,21 +79,41 @@ class universe:
 
 
 class world:
-    def __init__(self, numgames, p_t, crowd, **kwargs):
+    def __init__(self, numgames, crowd, p_t=None, d_t=None, v_t=None, **kwargs):
         self.numgames = numgames
         self.upset = random.uniform(0,1)
         self.p_t = p_t
-        randos = [random.uniform(0,1) for x in range(self.numgames)]
-        self.outcomes = [1 if x > self.p_t else 0 for x in randos]
+        self.d_t = d_t
+        self.v_t = v_t
+        self.truth = self.get_truth_vec(**kwargs)
+        self.outcomes = self.get_outcomes()
         self.play(crowd)
+
+    def get_truth_vec(self, **kwargs):
+        """Given singular p_t or a distribution for truth, return outcome vector."""
+        if self.v_t is not None:
+            return self.v_t
+        elif self.p_t is not None:
+            return [self.p_t] * self.numgames
+        elif self.d_t is not None:
+            if 'loc' in kwargs: # normal
+                return self.d_t(kwargs['loc'], kwargs['scale'], size=self.numgames)
+            elif 'low' in kwargs: # uniform
+                return self.d_t(kwargs['low'], kwargs['high'], size=self.numgames)
+        else:
+            raise ValueError(f"Need to define p_t (single probability), v_t (vector), or d_t (distribution)")
+
+    def get_outcomes(self):
+        randos = [random.uniform(0,1) for x in range(self.numgames)]
+        return [1 if r > t else 0 for r,t in zip(randos, self.truth)]
 
     def play(self, crowd):
         # Make the dataframe that we'll use to make the beautiful plots...
-        self.bigdf = pd.DataFrame(list(zip(self.outcomes, [self.p_t] * self.numgames)), columns=['outcomes', 'truth'])
+        self.bigdf = pd.DataFrame(list(zip(self.outcomes, self.truth)), columns=['outcomes', 'truth'])
         # Forecasts and scores for each forecaster
         self.truths_ranks = {'ign': [], 'brier': []}
         for (caster, i) in zip(crowd, range(len(crowd))):
-            self.bigdf[f'p_{i}'] = caster.forecasts([self.p_t] * self.numgames)
+            self.bigdf[f'p_{i}'] = caster.forecasts(self.truth)
             caster.score(self.outcomes) # CUMULATIVE MUST CHANGE
             self.bigdf[f'ign_{i}'] = caster.igns_cumsum
             self.bigdf[f'brier_{i}'] = caster.briers_cumsum
@@ -109,7 +132,6 @@ class world:
                 if score == caster.igns_cumsum[index]:
                     self.truths_ranks['ign'].append(y+1)
                     continue
-
 
     def get_truths_ranks_brier(self, df, caster):
         cols = list(filter(lambda c: re.match(f'brier_*', c), df.columns))

@@ -1,9 +1,10 @@
 from football import world, universe, forecaster
 import pdb
+from numpy import random
 
 def test_ham():
     # make universe, forecasters
-    uu = universe(p_t=0.55, **{"pmm":1, "pmp":1, "truth":1})
+    uu = universe(crowd={"pmm":1, "pmp":1, "truth":1}, p_t=0.55)
     wo = 14
     ga = 20
     uu.play(numworlds=wo, numgames=ga)
@@ -13,6 +14,10 @@ def test_ham():
     #pdb.set_trace()
     uu.plot_rank_freq()
     #pdb.set_trace()
+
+def test_dist():
+    uu = universe(crowd={"pmm":5,"truth":1}, d_t=random.uniform, low=0.2, high=0.8)
+    uu.play(5,5)
 
 def test_world():
     mycrowd = [forecaster('pmm'), forecaster('pmp'), forecaster('truth')]
