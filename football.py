@@ -70,12 +70,17 @@ class universe:
             W = world(numgames, self.crowd, p_t=self.p_t, d_t=self.d_t, v_t=self.v_t, **self.kwargs)
             self.worlds.append(W)
 
-    def plot_rank_freq(self):
-        q = pd.DataFrame([w.truths_ranks['ign'] for w in self.worlds])
-        freqs = q.apply(lambda x: x.value_counts(normalize=True)).T
+    def plot_rank_freq(self, score='ign'):
+        # assumes truth is last forecaster, sorry
+        Q = pd.DataFrame([w.longdf[w.longdf['forecaster'] == len(self.crowd)-1][f'{score}_rank'] for w in self.worlds])
+        freqs = Q.apply(lambda x: x.value_counts(normalize=True)).T
         freqs.columns = [name * 1.0 for name in freqs.columns]
         freqs = freqs.replace(nan, 0)[freqs.columns.intersection([1.0,2.0,3.0])]
         freqs.plot(style={1.0:'b', 2.0:'r', 3.0:'g'})
+    
+    def plot_rank_score(self, score='ign'):
+        # IGN points after game vs rank before the game
+        return 0
 
 
 class world:
@@ -109,37 +114,16 @@ class world:
 
     def play(self, crowd):
         # Make the dataframe that we'll use to make the beautiful plots...
-        self.bigdf = pd.DataFrame(list(zip(self.outcomes, self.truth)), columns=['outcomes', 'truth'])
+        self.widedf = pd.DataFrame(list(zip(range(self.numgames), self.outcomes, self.truth)), columns=['game', 'outcomes', 'truth'])
         # Forecasts and scores for each forecaster
         self.truths_ranks = {'ign': [], 'brier': []}
         for (caster, i) in zip(crowd, range(len(crowd))):
-            self.bigdf[f'p_{i}'] = caster.forecasts(self.truth)
+            self.widedf[f'p_{i}'] = caster.forecasts(self.truth)
             caster.score(self.outcomes) # CUMULATIVE MUST CHANGE
-            self.bigdf[f'ign_{i}'] = caster.igns_cumsum
-            self.bigdf[f'brier_{i}'] = caster.briers_cumsum
-            # Truth's Ranks....just truth for now. Which is truth? oops... let's assume truth always last (not ideal)
-            if caster.archetype == 'truth':
-                self.get_truths_ranks_ign(self.bigdf, caster)
-                self.get_truths_ranks_brier(self.bigdf, caster)
-
-    def get_truths_ranks_ign(self, df, caster):
-        cols = list(filter(lambda c: re.match(f'ign_*', c), df.columns))
-        for index, row in df.iterrows():
-            scores = [x for x in row[cols]] # ign
-            #pdb.set_trace()
-            scores.sort(reverse=True)
-            for (y, score) in zip(range(len(scores)), scores):
-                if score == caster.igns_cumsum[index]:
-                    self.truths_ranks['ign'].append(y+1)
-                    continue
-
-    def get_truths_ranks_brier(self, df, caster):
-        cols = list(filter(lambda c: re.match(f'brier_*', c), df.columns))
-        for index, row in df.iterrows():
-            scores = [x for x in row[cols]] # ign
-            #pdb.set_trace()
-            scores.sort(reverse=True)
-            for (y, score) in zip(range(len(scores)), scores):
-                if score == caster.briers_cumsum[index]:
-                    self.truths_ranks['brier'].append(y+1)
-                    continue
+            self.widedf[f'ign_{i}'] = caster.igns_cumsum
+            self.widedf[f'brier_{i}'] = caster.briers_cumsum
+        # Ranks
+        self.longdf = pd.wide_to_long(self.widedf, stubnames=['p_', 'ign_', 'brier_'], i='game', j='forecaster')           
+        self.longdf['ign_rank'] = self.longdf.groupby('game')['ign_'].rank('dense', ascending=False)
+        self.longdf['brier_rank'] = self.longdf.groupby('game')['brier_'].rank('dense', ascending=False)
+        self.longdf = self.longdf.reset_index()
