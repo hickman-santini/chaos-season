@@ -8,24 +8,28 @@ import pdb
 import re
 
 INSIDE_MARGIN = .10
-NUM_GAMES = 1024
-NUM_WORLDS = 512
+NUM_GAMES = 2**10
+NUM_WORLDS = 2**10
 
 class forecaster:
     def __init__(self, archetype, *args):
         self.archetype = archetype
-        if archetype not in ["oversure", "averse", "inside", "side", "pmp", "pmm", "truth"]:
+        if archetype not in ["oversure", "averse", "inside", "side", "truth"]:
             raise ValueError(f"{archetype} is not a valid archetype")
         if archetype == "inside":
             self.offset = random.uniform(-1*INSIDE_MARGIN,INSIDE_MARGIN)
         elif archetype == "averse":
-            self.beta = random.uniform(0,1)
+            self.beta = 0.5
+            #self.beta = random.uniform(0,1)
+        elif archetype == "oversure":
+            self.beta = 0.5
+            #self.beta = random.uniform(0,1)
         elif archetype == "side":
             self.offset = random.uniform(0,.5)
-        elif archetype == "pmp":
-            self.offset = 0.01
-        elif archetype == "pmm":
-            self.offset = -0.01
+        #elif archetype == "pmp":
+        #    self.offset = 0.1
+        #elif archetype == "pmm":
+        #    self.offset = -0.1
         elif archetype == "truth": # P_T
             self.offset = 0
         self.allin = random.uniform(0,1)
@@ -33,8 +37,26 @@ class forecaster:
 
     def forecasts(self, p_t):
         p = []
-        for truth in p_t:
-            p.append(truth + self.offset)
+        if self.archetype == 'oversure':
+            for truth in p_t:
+                if truth > 50:
+                    p.append(1 - self.beta*(1-truth))
+                else:
+                    p.append(self.beta*truth)
+        elif self.archetype == 'averse':
+            for truth in p_t:
+                p.append(0.5 + self.beta*(truth-0.5))
+        elif self.archetype == 'side':
+            for truth in p_t:
+                if truth > 50:
+                    p.append(0.5+self.offset)
+                else:
+                    p.append(0.5-self.offset)
+        elif self.archetype == 'truth':
+            for truth in p_t:
+                p.append(truth)
+        else:
+            raise ValueError('Oops! Don\'t have that archetype')
         self.preds = p
         return p
     
@@ -46,11 +68,14 @@ class forecaster:
 
     def ign(self, p):
         # p is prob assigned to the correct outcome
-        return 25 * 1 + log2(p)
+        return 25 * (1 + log2(p)) #-log2(p)
 
     def brier(self, p):
         # p is prob assigned to the correct outcome
         return (1-p)**2
+
+    def setid(self, id):
+        self.id = id
         
 
 class universe:
@@ -72,10 +97,11 @@ class universe:
 
     def plot_rank_freq(self, score='ign'):
         # assumes truth is last forecaster, sorry
-        Q = pd.DataFrame([w.longdf[w.longdf['forecaster'] == len(self.crowd)-1][f'{score}_rank'] for w in self.worlds])
+        Q = pd.DataFrame([w.longdf[w.longdf['archetype'] == 'truth'][f'{score}_rank'] for w in self.worlds])
         freqs = Q.apply(lambda x: x.value_counts(normalize=True)).T
         freqs.columns = [name * 1.0 for name in freqs.columns]
         freqs = freqs.replace(nan, 0)[freqs.columns.intersection([1.0,2.0,3.0])]
+        freqs.reset_index() # games
         freqs.plot(style={1.0:'b', 2.0:'r', 3.0:'g'})
     
     def plot_rank_score(self, score='ign'):
@@ -105,12 +131,14 @@ class world:
                 return self.d_t(kwargs['loc'], kwargs['scale'], size=self.numgames)
             elif 'low' in kwargs: # uniform
                 return self.d_t(kwargs['low'], kwargs['high'], size=self.numgames)
+            else:
+                raise ValueError(f"We haven\'t added that distribution yet, sorry")
         else:
             raise ValueError(f"Need to define p_t (single probability), v_t (vector), or d_t (distribution)")
 
     def get_outcomes(self):
         randos = [random.uniform(0,1) for x in range(self.numgames)]
-        return [1 if r > t else 0 for r,t in zip(randos, self.truth)]
+        return [1 if t > r else 0 for r,t in zip(randos, self.truth)]
 
     def play(self, crowd):
         # Make the dataframe that we'll use to make the beautiful plots...
@@ -118,6 +146,7 @@ class world:
         # Forecasts and scores for each forecaster
         self.truths_ranks = {'ign': [], 'brier': []}
         for (caster, i) in zip(crowd, range(len(crowd))):
+            caster.setid(i)
             self.widedf[f'p_{i}'] = caster.forecasts(self.truth)
             caster.score(self.outcomes) # CUMULATIVE MUST CHANGE
             self.widedf[f'ign_{i}'] = caster.igns_cumsum
@@ -125,5 +154,6 @@ class world:
         # Ranks
         self.longdf = pd.wide_to_long(self.widedf, stubnames=['p_', 'ign_', 'brier_'], i='game', j='forecaster')           
         self.longdf['ign_rank'] = self.longdf.groupby('game')['ign_'].rank('dense', ascending=False)
-        self.longdf['brier_rank'] = self.longdf.groupby('game')['brier_'].rank('dense', ascending=False)
+        self.longdf['brier_rank'] = self.longdf.groupby('game')['brier_'].rank('dense', ascending=True)
         self.longdf = self.longdf.reset_index()
+        self.longdf['archetype'] = self.longdf['forecaster'].apply(lambda x: crowd[x].archetype)
