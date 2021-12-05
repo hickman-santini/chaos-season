@@ -42,13 +42,12 @@ def test_ign():
     c = forecaster('truth') # archetype doesn't matter right now
     assert c.ign(0.7) > c.ign(0.5)
     assert c.ign(0.3) > c.ign(0.1)
-    #assert c.brier(0.7) > c.brier(0.5)
-    #assert c.brier(0.3) > c.brier(0.1)
+    # Brier is "the lower the better" (ranked in ascending order)
+    assert c.brier(0.1) > c.brier(0.3)
+    assert c.brier(0.5) > c.brier(0.7)
 
 def test_outcomes():
     uu3 = universe(crowd={'side':1,'oversure':1,'truth':1}, p_t=0.8)
     uu3.play(2**5,2**5)
     U = uu3.worlds[5].longdf
     assert sum(U['outcomes'])/len(U['outcomes']) > 0.5 # should be around 0.8
-
-# take combos (0,1) with first two draws; compare analytically to graph dots

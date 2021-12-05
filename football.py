@@ -36,7 +36,6 @@ class forecaster:
         elif archetype == "truth": # P_T
             self.offset = 0
         self.allin = random.uniform(0,1)
-        # How to hold their stats? Make a stats object that extends pd.DataFrame?
 
     def forecasts(self, p_t):
         p = []
@@ -108,7 +107,6 @@ class universe:
             self.worlds.append(W)
 
     def plot_rank_freq(self, score='ign'):
-        # assumes truth is last forecaster, sorry
         Q = pd.DataFrame([w.longdf[w.longdf['archetype'] == 'truth'][f'{score}_rank'] for w in self.worlds])
         freqs = Q.apply(lambda x: x.value_counts(normalize=True)).T
         freqs.columns = [name * 1.0 for name in freqs.columns]
@@ -130,6 +128,7 @@ class universe:
 
     def plot_rank_score(self, score='ign'):
         # IGN points after game vs rank before the game
+        # TODO
         return 0
 
 
@@ -145,7 +144,7 @@ class world:
         self.play(crowd)
 
     def get_truth_vec(self, **kwargs):
-        """Given singular p_t or a distribution for truth, return outcome vector."""
+        """Given singular p_t or a distribution for truth, return vector of true probabilities."""
         if self.v_t is not None:
             return self.v_t
         elif self.p_t is not None:
@@ -163,6 +162,7 @@ class world:
             raise ValueError(f"Need to define p_t (single probability), v_t (vector), or d_t (distribution)")
 
     def get_outcomes(self):
+        """Pseudo-randomly get outcome vector using truth (vector of true probabilities)."""
         randos = [random.uniform(0,1) for x in range(self.numgames)]
         return [1 if t > r else 0 for r,t in zip(randos, self.truth)]
 
