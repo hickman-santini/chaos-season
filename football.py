@@ -1,5 +1,7 @@
 """
-
+Example usage:
+>>> uu = universe(crowd={"oversure":5,"truth":1}, d_t=random.uniform, low=0.2, high=0.8)
+>>> uu.play(numgames=512, numworlds=1024)
 """
 from typing import DefaultDict
 from numpy import random, log2, nan
@@ -9,7 +11,10 @@ import re
 
 INSIDE_MARGIN = .10
 NUM_GAMES = 2**10
-NUM_WORLDS = 2**10
+NUM_WORLDS = 2**11
+COLOR1 = 'c'
+COLOR2 = 'r'
+COLOR3 = 'g'
 
 class forecaster:
     def __init__(self, archetype, *args):
@@ -19,11 +24,9 @@ class forecaster:
         if archetype == "inside":
             self.offset = random.uniform(-1*INSIDE_MARGIN,INSIDE_MARGIN)
         elif archetype == "averse":
-            self.beta = 0.5
-            #self.beta = random.uniform(0,1)
+            self.beta = random.uniform(0,1)
         elif archetype == "oversure":
-            self.beta = 0.5
-            #self.beta = random.uniform(0,1)
+            self.beta = random.uniform(0,1)
         elif archetype == "side":
             self.offset = random.uniform(0,.5)
         #elif archetype == "pmp":
@@ -52,6 +55,9 @@ class forecaster:
                     p.append(0.5+self.offset)
                 else:
                     p.append(0.5-self.offset)
+        elif self.archetype == 'inside':
+            for truth in p_t:
+                p.append(truth + self.offset)
         elif self.archetype == 'truth':
             for truth in p_t:
                 p.append(truth)
@@ -76,19 +82,25 @@ class forecaster:
 
     def setid(self, id):
         self.id = id
+
+    def __str__(self):
+        return self.archetype
         
 
 class universe:
-    def __init__(self, crowd, p_t=None, d_t=None, v_t=None, **kwargs):
+    def __init__(self, crowd, p_t=None, d_t=None, v_t=None, str1="", **kwargs):
         self.p_t = p_t
         self.d_t = d_t
         self.v_t = v_t
+        self.crowdsrc = crowd
         self.crowd = []
+        self.strr = str1
         self.kwargs = kwargs
         for archetype, num in crowd.items():
             for i in range(num):
                 self.crowd.append(forecaster(archetype))
         self.worlds = []
+        self.time_to_99 = {'ign':[], 'brier':[]}
 
     def play(self, numworlds=NUM_WORLDS, numgames=NUM_GAMES):
         for w in range(numworlds):
@@ -101,9 +113,21 @@ class universe:
         freqs = Q.apply(lambda x: x.value_counts(normalize=True)).T
         freqs.columns = [name * 1.0 for name in freqs.columns]
         freqs = freqs.replace(nan, 0)[freqs.columns.intersection([1.0,2.0,3.0])]
-        freqs.reset_index() # games
-        freqs.plot(style={1.0:'b', 2.0:'r', 3.0:'g'})
-    
+        freqs = freqs.reset_index().drop('index', axis=1) # games
+        for index, row in freqs.iterrows():
+            if row[1.0] > 0.99:
+                xmax = index
+                break
+        title = f'Truth: {self.strr}, Crowd: {str(self.crowdsrc)}, Score: {score}'
+        if 'xmax' in locals():
+            ax = freqs.plot(style={1.0:COLOR1, 2.0:COLOR2, 3.0:COLOR3}, kind='area', xlim=(0,xmax), title=title)
+            self.time_to_99[score].append(xmax)
+        else:
+            ax = freqs.plot(style={1.0:COLOR1, 2.0:COLOR2, 3.0:COLOR3}, kind='area', title=title)
+            self.time_to_99[score].append(None)
+        ax.set_xlabel('# games')
+        ax.set_ylabel('% worlds where truth is ranked...')
+
     def plot_rank_score(self, score='ign'):
         # IGN points after game vs rank before the game
         return 0
@@ -131,6 +155,8 @@ class world:
                 return self.d_t(kwargs['loc'], kwargs['scale'], size=self.numgames)
             elif 'low' in kwargs: # uniform
                 return self.d_t(kwargs['low'], kwargs['high'], size=self.numgames)
+            elif 'left' in kwargs: # triangular
+                return self.d_t(kwargs['left'], kwargs['mode'], kwargs['right'], size=self.numgames)
             else:
                 raise ValueError(f"We haven\'t added that distribution yet, sorry")
         else:
